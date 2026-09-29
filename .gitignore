@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# runtime state (regenerated on use)
+**/vault/
+**/uploads/
+**/merged_files/
+**/split_parts/
+**/audit.log
+**/cloud_connections.json
+**/svupload_*/
+**/svcloud_*/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

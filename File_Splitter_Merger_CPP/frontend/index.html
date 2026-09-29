@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureVault · 3D File Fragmentation</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js",
+    "three/addons/controls/OrbitControls.js": "./vendor/OrbitControls.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="bg3d"></canvas>
+<div class="vignette"></div>
+
+<div id="boot" class="boot">
+  <div class="boot-core"></div>
+  <p>initializing vault core…</p>
+</div>
+
+<header class="topbar">
+  <div class="logo">
+    <span class="logo-gem"></span>
+    Secure<span>Vault</span>
+  </div>
+
+  <nav class="nav" id="nav">
+    <button class="pill active" data-panel="split">
+      <span class="pill-ico">◈</span> Shatter
+    </button>
+    <button class="pill" data-panel="merge">
+      <span class="pill-ico">◉</span> Reconstruct
+    </button>
+    <button class="pill" data-panel="vault">
+      <span class="pill-ico">▤</span> Vault
+    </button>
+    <button class="pill" data-panel="cloud">
+      <span class="pill-ico">☁</span> Cloud
+    </button>
+  </nav>
+
+  <div class="status" id="statusChip" title="API status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">connecting…</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= HERO ================= -->
+  <section class="hero" id="hero">
+    <h1>Shatter it.<br><span class="grad">Scatter the shards.</span><br>Rebuild from <em>any</em> k of n.</h1>
+    <p>
+      Files are erasure-coded into encrypted fragments with Shamir-split keys —
+      lose the rest, keep any <b>k</b> shards and the original returns, byte for byte.
+    </p>
+    <div class="hero-chips">
+      <div class="chip"><b id="statSets">0</b><span>fragment sets</span></div>
+      <div class="chip"><b id="statShards">0</b><span>shards stored</span></div>
+      <div class="chip"><b id="statEngine">…</b><span>engine</span></div>
+    </div>
+    <div class="hero-hint">✦ drag the void to orbit · scroll to zoom · click a shard</div>
+  </section>
+
+  <!-- ================= SPLIT ================= -->
+  <section class="panel glass" id="panel-split">
+    <div class="panel-head">
+      <h2>Shatter a file</h2>
+      <span class="panel-sub">fragment · encrypt · distribute</span>
+    </div>
+
+    <div class="dropzone" id="dropSplit" tabindex="0">
+      <input type="file" id="splitFile" hidden>
+      <div class="dz-idle">
+        <div class="dz-glyph">⬡</div>
+        <p><b>Drop a file</b> here or <span class="link">browse</span></p>
+        <p class="dz-note">it never leaves this machine unencrypted</p>
+      </div>
+      <div class="dz-file hidden" id="splitFileChip">
+        <span class="dz-ico">🗎</span>
+        <div class="dz-meta"><b id="splitFileName"></b><span id="splitFileSize"></span></div>
+        <button class="icon-btn" id="splitFileClear" title="remove">✕</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>Shards (n)</span><output id="partsOut">5</output></div>
+      <input type="range" id="parts" min="2" max="16" value="5">
+    </div>
+
+    <div class="field">
+      <div class="field-label">
+        <span>Rebuild from any <b id="thrK">3</b> of <b id="thrN">5</b></span>
+        <output id="thrOut">3</output>
+      </div>
+      <input type="range" id="threshold" min="1" max="5" value="3">
+      <p class="hint" id="thrHint">key-splitting active — every shard alone reveals nothing</p>
+    </div>
+
+    <label class="toggle">
+      <input type="checkbox" id="splitEncrypt">
+      <span class="track"><span class="thumb"></span></span>
+      <span class="toggle-text">Password-protect shards <em id="encModeNote"></em></span>
+    </label>
+
+    <div class="field hidden" id="splitPassWrap">
+      <div class="field-label"><span>Master password</span></div>
+      <input type="password" id="splitPassword" class="text-input" placeholder="used to derive the shard keys (scrypt)" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>Store shards in</span><span class="hint-inline" id="destNote">vault folder</span></div>
+      <input type="text" id="splitDestination" class="text-input mono" placeholder="leave empty for the managed vault — or paste a folder path, e.g. D:\shards\photos" autocomplete="off" spellcheck="false">
+    </div>
+
+    <button class="cta" id="splitBtn">
+      <span class="cta-label">Shatter into shards</span>
+      <span class="cta-burst"></span>
+    </button>
+
+    <div class="progress hidden" id="splitProgress"><div class="progress-bar"></div></div>
+
+    <div class="result hidden" id="splitResult">
+      <div class="result-head">
+        <div>
+          <h3 id="resultTitle"></h3>
+          <p class="hint" id="resultSub"></p>
+        </div>
+        <div class="result-actions">
+          <button class="ghost-btn" id="downloadAll">↓ all shards</button>
+          <button class="ghost-btn" id="pushCloud">☁ to cloud</button>
+        </div>
+      </div>
+      <div class="frag-grid" id="fragGrid"></div>
+    </div>
+  </section>
+
+  <!-- ================= MERGE ================= -->
+  <section class="panel glass hidden" id="panel-merge">
+    <div class="panel-head">
+      <h2>Reconstruct a file</h2>
+      <span class="panel-sub">gather ≥ k shards · the vault does the rest</span>
+    </div>
+
+    <div class="dropzone multi" id="dropMerge" tabindex="0">
+      <input type="file" id="mergeFiles" multiple hidden>
+      <div class="dz-idle">
+        <div class="dz-glyph">⬢</div>
+        <p><b>Drop shards</b> here (any k of n)</p>
+        <p class="dz-note">.svf fragments are self-describing — no manifest needed</p>
+      </div>
+    </div>
+
+    <div class="frag-grid" id="mergeGrid"></div>
+
+    <div class="threshold-meter hidden" id="thrMeter">
+      <div class="threshold-text">
+        <span id="thrCount">0</span> of <span id="thrNeed">k</span> key shards gathered
+      </div>
+      <div class="meter"><div class="meter-fill" id="thrFill"></div></div>
+    </div>
+
+    <div class="field hidden" id="mergePassWrap">
+      <div class="field-label"><span>Master password</span><span class="hint-inline">shards are encrypted</span></div>
+      <input type="password" id="mergePassword" class="text-input" placeholder="enter the password used at split time" autocomplete="off">
+    </div>
+
+    <div class="cloud-gather" id="cloudGather">
+      <div class="cg-head" id="cgToggle">
+        <span class="cg-title">☁ gather shards from cloud</span>
+        <span class="cg-chevron" id="cgChevron">▸</span>
+      </div>
+      <div class="cg-body hidden" id="cgBody">
+        <select id="cgConn" class="text-input"></select>
+        <button class="ghost-btn" id="cgList">list remote shards</button>
+        <div id="cgResults" class="cg-results"></div>
+        <button class="cta" id="cgMergeBtn" disabled>
+          <span class="cta-label">Reconstruct from cloud</span>
+          <span class="cta-burst"></span>
+        </button>
+      </div>
+    </div>
+
+    <button class="cta" id="mergeBtn" disabled>
+      <span class="cta-label">Reconstruct</span>
+      <span class="cta-burst"></span>
+    </button>
+
+    <div class="progress hidden" id="mergeProgress"><div class="progress-bar"></div></div>
+
+    <div class="result hidden" id="mergeResult">
+      <div class="result-head">
+        <div>
+          <h3 id="mergeTitle"></h3>
+          <p class="hint mono" id="mergeSub"></p>
+        </div>
+        <a class="ghost-btn" id="mergeDownload" download>↓ save file</a>
+      </div>
+      <div class="integrity" id="mergeIntegrity"></div>
+    </div>
+  </section>
+
+  <!-- ================= VAULT ================= -->
+  <section class="panel glass hidden wide" id="panel-vault">
+    <div class="panel-head">
+      <h2>Vault</h2>
+      <span class="panel-sub">fragment sets · reconstructed files · audit trail</span>
+    </div>
+
+    <div class="vault-cols">
+      <div class="vault-col">
+        <h3 class="col-title">Fragment sets</h3>
+        <div id="vaultSets" class="vault-list"><p class="empty">loading…</p></div>
+      </div>
+      <div class="vault-col">
+        <h3 class="col-title">Reconstructed files</h3>
+        <div id="vaultMerged" class="vault-list"><p class="empty">loading…</p></div>
+      </div>
+    </div>
+
+    <h3 class="col-title audit-title">Audit trail</h3>
+    <div id="auditList" class="audit"></div>
+  </section>
+
+  <!-- ================= CLOUD ================= -->
+  <section class="panel glass hidden" id="panel-cloud">
+    <div class="panel-head">
+      <h2>Cloud distribution</h2>
+      <span class="panel-sub">push shards to S3-compatible storage or any WebDAV server</span>
+    </div>
+
+    <div class="cloud-form">
+      <div class="field" style="margin-top:0">
+        <div class="field-label"><span>Provider</span></div>
+        <div class="seg" id="cloudProvider">
+          <button class="seg-btn active" data-provider="webdav">WebDAV / Nextcloud</button>
+          <button class="seg-btn" data-provider="s3">S3 compatible</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-label"><span>Connection name</span></div>
+        <input type="text" id="cloudName" class="text-input" placeholder="my-nas, office-nextcloud…" autocomplete="off">
+      </div>
+
+      <!-- webdav fields -->
+      <div id="cloudWebdavFields">
+        <div class="field">
+          <div class="field-label"><span>Server URL</span></div>
+          <input type="text" id="cloudUrl" class="text-input mono" placeholder="https://cloud.example.com/remote.php/dav/files/user" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <div class="field-label"><span>Username</span></div>
+            <input type="text" id="cloudUser" class="text-input" autocomplete="off">
+          </div>
+          <div class="field">
+            <div class="field-label"><span>Password / app token</span></div>
+            <input type="password" id="cloudPass" class="text-input" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <!-- s3 fields -->
+      <div id="cloudS3Fields" class="hidden">
+        <div class="field">
+          <div class="field-label"><span>Endpoint</span></div>
+          <input type="text" id="cloudEndpoint" class="text-input mono" placeholder="https://s3.amazonaws.com · https://<acct>.r2.cloudflarestorage.com" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <div class="field-label"><span>Bucket</span></div>
+            <input type="text" id="cloudBucket" class="text-input" placeholder="my-bucket">
+          </div>
+          <div class="field">
+            <div class="field-label"><span>Region</span></div>
+            <input type="text" id="cloudRegion" class="text-input" placeholder="us-east-1">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <div class="field-label"><span>Access key</span></div>
+            <input type="text" id="cloudAccess" class="text-input" autocomplete="off">
+          </div>
+          <div class="field">
+            <div class="field-label"><span>Secret key</span></div>
+            <input type="password" id="cloudSecret" class="text-input" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <div class="cloud-actions">
+        <button class="ghost-btn" id="cloudTestBtn">test & save</button>
+        <p class="hint" id="cloudMsg"></p>
+      </div>
+    </div>
+
+    <h3 class="col-title" style="margin-top:22px">Saved connections</h3>
+    <div id="cloudConnList" class="vault-list"></div>
+
+    <p class="hint" style="margin-top:14px">
+      Shards are pushed to <span class="mono">securevault/&lt;set-id&gt;/</span> — only encrypted
+      fragments ever leave this machine. Push a set from the Vault panel or straight after a split.
+    </p>
+  </section>
+
+</main>
+
+<div id="toasts"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
